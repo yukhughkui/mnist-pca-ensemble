@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>手写数字识别系统 · PCA + 软投票集成</title>
+<style>
+:root{
+  --bg:#F5F6F7; --panel:#FFFFFF; --line:#D6DCE2; --soft:#F2F4F5;
+  --primary:#2F6B5E; --primary-soft:#DDE9E5; --text:#1F2328;
+  --sub:#5B6470; --warn:#B04A3A; --gray:#C9D0D6;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:"Microsoft YaHei","PingFang SC","Segoe UI",sans-serif;
+  min-height:100vh; display:flex; flex-direction:column; align-items:center;
+  padding:26px 20px 20px;
+}
+h1{font-size:19px; font-weight:700; letter-spacing:.5px}
+h1 span{font-size:12px; font-weight:400; color:var(--sub); margin-left:10px}
+.wrap{width:100%; max-width:940px}
+main{display:flex; gap:16px; margin-top:18px; align-items:stretch}
+.card{
+  background:var(--panel); border:1px solid var(--line);
+  border-radius:3px;
+}
+.pad{padding:16px}
+
+/* 画板 */
+.left{flex:0 0 316px; display:flex; flex-direction:column}
+#board{
+  background:#fff; border:1px solid var(--line); border-radius:2px;
+  display:block; cursor:crosshair; touch-action:none;
+}
+.hint{font-size:11px; color:var(--sub); margin:8px 0 10px; text-align:center}
+.tools{display:flex; gap:6px; flex-wrap:wrap}
+button{
+  font-family:inherit; font-size:12px; padding:7px 12px; cursor:pointer;
+  background:#fff; color:var(--text); border:1px solid var(--line);
+  border-radius:2px; transition:.15s;
+}
+button:hover{border-color:var(--primary); color:var(--primary)}
+button.primary{background:var(--primary); color:#fff; border-color:var(--primary)}
+button.primary:hover{background:#255648; color:#fff}
+
+/* 结果区 */
+.right{flex:1; display:flex; flex-direction:column; gap:12px}
+.top{display:flex; gap:14px; align-items:stretch}
+.big{
+  flex:0 0 118px; text-align:center; padding:14px 8px;
+  background:var(--panel); border:1px solid var(--line); border-radius:3px;
+}
+.big .d{font-family:Consolas,monospace; font-size:52px; font-weight:700;
+  color:var(--primary); line-height:1}
+.big .t{font-size:10px; color:var(--sub); margin-top:6px}
+.meta{flex:1; padding:12px 14px; background:var(--panel);
+  border:1px solid var(--line); border-radius:3px; display:flex;
+  flex-direction:column; justify-content:center; gap:6px}
+.conf{font-size:15px}
+.conf b{font-family:Consolas,monospace; color:var(--primary)}
+.judge{font-size:12px; color:var(--sub)}
+.judge.low{color:var(--warn)}
+.top3{font-size:11px; color:var(--sub); font-family:Consolas,monospace}
+.right-top-right{display:flex; gap:12px; flex:1}
+
+.preview{
+  flex:0 0 112px; text-align:center; padding:10px;
+  background:var(--panel); border:1px solid var(--line); border-radius:3px;
+}
+.preview img{width:84px; height:84px; image-rendering:pixelated; display:block; margin:0 auto}
+.preview .t{font-size:10px; color:var(--sub); margin-top:6px}
+
+/* 概率条 */
+.bars{padding:12px 14px 14px; background:var(--panel);
+  border:1px solid var(--line); border-radius:3px; flex:1}
+.bars .t{font-size:11px; color:var(--sub); margin-bottom:8px}
+.row{display:flex; align-items:center; gap:8px; height:19px}
+.row .k{width:12px; font-family:Consolas,monospace; font-size:11px; color:var(--sub); text-align:right}
+.track{flex:1; height:9px; background:var(--soft); border:1px solid var(--line);
+  border-radius:1px; overflow:hidden}
+.fill{height:100%; width:0%; background:var(--gray); transition:width .25s ease}
+.row.on .k{color:var(--primary); font-weight:700}
+.row.on .fill{background:var(--primary)}
+.row .v{width:44px; font-family:Consolas,monospace; font-size:10px; color:var(--sub)}
+.row.on .v{color:var(--primary)}
+
+/* 模型切换 */
+.switch{display:flex; align-items:center; gap:14px; font-size:12px; color:var(--sub);
+  padding:9px 14px; background:var(--panel); border:1px solid var(--line); border-radius:3px}
+.switch label{display:flex; align-items:center; gap:5px; cursor:pointer; color:var(--text)}
+.switch .auto{margin-left:auto; display:flex; align-items:center; gap:5px}
+
+footer{
+  width:100%; max-width:940px; margin-top:14px; padding-top:10px;
+  border-top:1px solid var(--line); font-size:11px; color:var(--sub);
+  display:flex; gap:16px; flex-wrap:wrap;
+}
+.truth{color:var(--primary)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>手写数字识别系统 <span>PCA 降维 + 软投票集成 · 在线推理演示</span></h1>
+  <main>
+    <!-- 左：画板 -->
+    <section class="card pad left">
+      <canvas id="board" width="280" height="280"></canvas>
+      <p class="hint">在此用鼠标或手指书写 0–9</p>
+      <div class="tools">
+        <button class="primary" id="btnRec">识别 (Enter)</button>
+        <button id="btnClear">清空 (C)</button>
+        <button id="btnSample">随机样本</button>
+        <button id="btnOpen">打开图片</button>
+        <button id="btnSave">保存</button>
+      </div>
+      <input type="file" id="file" accept="image/*" hidden>
+    </section>
+
+    <!-- 右：结果 -->
+    <section class="right">
+      <div class="top">
+        <div class="big"><div class="d" id="digit">—</div><div class="t">识别结果</div></div>
+        <div class="meta">
+          <div class="conf" id="conf">置信度 —</div>
+          <div class="judge" id="judge">等待输入</div>
+          <div class="top3" id="top3"></div>
+          <div class="truth" id="truth"></div>
+        </div>
+        <div class="preview">
+          <img id="pview" alt="模型输入" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+          <div class="t">模型实际输入 28×28</div>
+        </div>
+      </div>
+
+      <div class="bars">
+        <div class="t">十类后验概率分布</div>
+        <div id="barlist"></div>
+      </div>
+
+      <div class="switch">
+        <span>推理模型</span>
+        <label><input type="radio" name="m" value="ens" checked> PCA + 软投票集成</label>
+        <label><input type="radio" name="m" value="mlp"> PCA + MLP</label>
+        <label class="auto"><input type="checkbox" id="auto" checked> 抬笔后自动识别</label>
+      </div>
+    </section>
+  </main>
+  <footer id="foot">正在读取模型信息…</footer>
+</div>
+
+<script>
+const c = document.getElementById('board');
+const ctx = c.getContext('2d');
+const W = 280, BRUSH = 18;
+let drawing = false, hasInk = false, timer = null;
+
+function resetBoard(){
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,W);
+  hasInk = false;
+}
+resetBoard();
+
+function pos(e){
+  const r = c.getBoundingClientRect();
+  return [ (e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (W / r.height) ];
+}
+function dot(x,y){ ctx.beginPath(); ctx.arc(x,y,BRUSH/2,0,7); ctx.fill(); }
+
+c.addEventListener('pointerdown', e=>{
+  c.setPointerCapture(e.pointerId); drawing = true;
+  const [x,y]=pos(e); ctx.fillStyle='#000'; ctx.lineWidth=BRUSH;
+  ctx.lineCap='round'; ctx.lineJoin='round'; dot(x,y);
+  c._last=[x,y]; hasInk=true;
+});
+c.addEventListener('pointermove', e=>{
+  if(!drawing) return;
+  const [x,y]=pos(e); const [px,py]=c._last;
+  ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(x,y); ctx.strokeStyle='#000';
+  ctx.lineWidth=BRUSH; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.stroke();
+  c._last=[x,y];
+});
+c.addEventListener('pointerup', e=>{
+  if(!drawing) return;
+  drawing=false;
+  if(document.getElementById('auto').checked){ clearTimeout(timer); timer=setTimeout(predict,120); }
+});
+
+/* 概率条 */
+const rows = [];
+(function buildBars(){
+  const list = document.getElementById('barlist');
+  for(let d=0; d<10; d++){
+    const row = document.createElement('div'); row.className='row';
+    row.innerHTML = `<span class="k">${d}</span>
+      <span class="track"><span class="fill"></span></span>
+      <span class="v">0.0%</span>`;
+    list.appendChild(row);
+    rows.push({el:row, fill:row.querySelector('.fill'), v:row.querySelector('.v')});
+  }
+})();
+
+function drawBars(probs, pred){
+  rows.forEach((r,i)=>{
+    const p = probs ? probs[i] : 0;
+    r.fill.style.width = (p*100).toFixed(1)+'%';
+    r.v.textContent = (p*100).toFixed(1)+'%';
+    r.el.classList.toggle('on', i===pred);
+  });
+}
+
+function clearResult(){
+  document.getElementById('digit').textContent='—';
+  document.getElementById('conf').innerHTML='置信度 —';
+  const j=document.getElementById('judge');
+  j.textContent='等待输入'; j.className='judge';
+  document.getElementById('top3').textContent='';
+  document.getElementById('truth').textContent='';
+  document.getElementById('pview').src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  drawBars(null,-1);
+}
+
+async function predict(){
+  if(!hasInk) return;
+  const model = document.querySelector('input[name=m]:checked').value;
+  let res;
+  try{
+    const r = await fetch('/api/predict',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({image:c.toDataURL('image/png'), model})
+    });
+    res = await r.json();
+  }catch(e){
+    document.getElementById('judge').textContent='后端未连接，请确认服务已启动';
+    return;
+  }
+  if(res.error){
+    document.getElementById('judge').textContent =
+      res.error === 'empty' ? '请先书写一个数字' : res.error;
+    return;
+  }
+
+  document.getElementById('digit').textContent = res.pred;
+  const conf = res.probs[res.pred];
+  document.getElementById('conf').innerHTML =
+    `置信度 <b>${(conf*100).toFixed(1)}%</b>　　推理耗时 ${res.ms.toFixed(1)} ms`;
+  const j = document.getElementById('judge');
+  if(conf >= res.threshold){
+    j.textContent = `置信度高于阈值 ${res.threshold.toFixed(2)}　→　自动接收`;
+    j.className='judge';
+  }else{
+    j.textContent = `置信度低于阈值 ${res.threshold.toFixed(2)}　→　拒识，转人工复核`;
+    j.className='judge low';
+  }
+  const top = res.probs.map((p,i)=>[p,i]).sort((a,b)=>b[0]-a[0]).slice(0,3);
+  document.getElementById('top3').textContent =
+    'Top-3　' + top.map(([p,i])=>`${i}（${(p*100).toFixed(0)}%）`).join('　');
+  document.getElementById('pview').src = res.input;
+  drawBars(res.probs, res.pred);
+
+  const t = document.getElementById('truth');
+  if(c._truth != null){
+    t.textContent = `真实数字 ${c._truth}　${res.pred==c._truth?'✓ 识别正确':'✗ 识别错误'}`;
+  }
+}
+
+/* 按钮 */
+document.getElementById('btnRec').onclick = predict;
+document.getElementById('btnClear').onclick = ()=>{ resetBoard(); c._truth=null; clearResult(); };
+document.getElementById('btnSave').onclick = ()=>{
+  const a=document.createElement('a');
+  a.download='handwriting.png'; a.href=c.toDataURL('image/png'); a.click();
+};
+document.getElementById('btnSample').onclick = async ()=>{
+  const s = await (await fetch('/api/sample')).json();
+  const img = new Image();
+  img.onload = ()=>{
+    resetBoard(); ctx.drawImage(img,0,0,W,W); hasInk=true;
+    c._truth = s.label; clearResult();
+    document.getElementById('truth').textContent = `当前为测试集样本，真实数字：${s.label}`;
+    predict();
+  };
+  img.src = s.image;
+};
+document.getElementById('btnOpen').onclick = ()=>document.getElementById('file').click();
+document.getElementById('file').onchange = e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const img = new Image();
+  img.onload = ()=>{
+    const s = Math.min(img.width, img.height);
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,W);
+    ctx.drawImage(img, (img.width-s)/2, (img.height-s)/2, s, s, 0, 0, W, W);
+    hasInk=true; c._truth=null; clearResult(); predict();
+  };
+  img.src = URL.createObjectURL(f);
+  e.target.value='';
+};
+document.addEventListener('keydown', e=>{
+  if(e.key==='Enter') predict();
+  if(e.key==='c'||e.key==='C'){ resetBoard(); c._truth=null; clearResult(); }
+});
+
+/* 页脚信息 */
+/* ?demo 直接进入演示模式：自动载入一个测试集样本并识别 */
+if(location.search.includes('demo')){
+  window.addEventListener('load', ()=>setTimeout(
+    ()=>document.getElementById('btnSample').click(), 300));
+}
+
+(async ()=>{
+  const i = await (await fetch('/api/info')).json();
+  document.getElementById('foot').innerHTML =
+    `特征链路　784 维像素 → 标准化 → PCA ${i.n_comp} 维（累计方差贡献率 95%）　|　`+
+    `测试集准确率 ${(i.acc*100).toFixed(2)}%　|　`+
+    `评估时延 ${i.latency ? i.latency.toFixed(3)+' ms/样本（批处理）' : '—'}　|　`+
+    `拒识阈值 ${i.threshold.toFixed(2)}`;
+})();
+</script>
+</body>
+</html>

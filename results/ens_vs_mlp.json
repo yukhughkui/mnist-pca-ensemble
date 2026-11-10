@@ -1,0 +1,30 @@
+{
+  "A_standard": {
+    "n": 10000,
+    "acc_ens": 0.9827,
+    "acc_mlp": 0.9799,
+    "only_ens": 58,
+    "only_mlp": 30,
+    "both_wrong": 143,
+    "p_value": 0.0037465093469812305
+  },
+  "B_handdrawn": {
+    "n": 2000,
+    "acc_ens": 0.9745,
+    "acc_mlp": 0.9745,
+    "only_ens": 10,
+    "only_mlp": 10,
+    "both_wrong": 41,
+    "p_value": 1.0
+  },
+  "confidence": {
+    "ens": {
+      "mean": 0.8635880189109396,
+      "reject": 109
+    },
+    "mlp": {
+      "mean": 0.9893181324005127,
+      "reject": 8
+    }
+  }
+}

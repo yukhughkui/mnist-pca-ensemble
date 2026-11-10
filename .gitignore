@@ -1,0 +1,18 @@
+# 本地虚拟环境
+venv/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 集成模型 133MB，超过 GitHub 单文件 100MB 上限，不入库
+# （运行 python src/run_experiment.py 约 6 分钟即可重新生成）
+results/deploy_model.joblib
+
+# 运行日志
+results/*.log
+
+# 报告中间产物
+report/_preview/
+report/paper_preview.pdf
+report/paper_raw.docx
