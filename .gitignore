@@ -16,3 +16,6 @@ results/*.log
 report/_preview/
 report/paper_preview.pdf
 report/paper_raw.docx
+
+# IDE 本地配置
+.idea/
