@@ -19,3 +19,4 @@ report/paper_raw.docx
 
 # IDE 本地配置
 .idea/
+docs/ort/*.mjs
